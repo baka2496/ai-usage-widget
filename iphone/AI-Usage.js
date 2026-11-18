@@ -12,7 +12,8 @@
 //    中/大尺寸：all  → Antigravity 也顯示「Claude 和 GPT」那組額度
 // ============================================================
 
-// ★ 把電腦 install.ps1 最後印出來的網址貼在這裡
+// ★ 把電腦 install.ps1 最後印出來的 Gist 代號（或完整網址）貼在這裡
+//   只看其中的 32 碼代號，GitHub 帳號改名也不用重貼。
 const FEED_URL = "";
 
 const STALE_MIN = 45;     // 資料超過這麼久沒更新 → 顯示「電腦離線」
@@ -46,19 +47,56 @@ function writeCache(name, obj) {
 // ------------------------------------------------------------
 //  讀 Gist（電腦每 15 分鐘上傳 Claude + Antigravity 的額度）
 // ------------------------------------------------------------
+const FEED_FILE = "agy-usage.json";
+
+// 從 FEED_URL 取出 Gist 代號（32 碼英數）。貼代號或貼完整網址都可以。
+function gistIdOf(s) {
+  const m = String(s || "").match(/[0-9a-f]{32}/i);
+  return m ? m[0].toLowerCase() : null;
+}
+
+async function fetchText(url) {
+  const r = new Request(url);
+  r.timeoutInterval = 15;
+  r.headers = { Accept: "application/vnd.github+json", "User-Agent": "ai-usage-widget" };
+  const text = await r.loadString();
+  const code = r.response && r.response.statusCode;
+  if (code && code !== 200) throw new Error("http" + code);
+  return text;
+}
+
+function parseFeed(text) {
+  const feed = JSON.parse(text);
+  if (!feed || typeof feed !== "object" || !(feed.agy || feed.claude || feed.groups)) throw new Error("parse");
+  return feed;
+}
+
+// 讀 Gist：先用 GitHub API（只靠 Gist 代號，帳號改名也不受影響）；
+// API 失敗（例如每小時次數用完）時，改用上次記下的擁有者拼出 raw 網址再試一次。
 async function getFeed() {
   const cache = readCache("feed");
-  if (!FEED_URL) return { feed: cache ? cache.feed : null, error: "nourl" };
+  const id = gistIdOf(FEED_URL);
+  if (!id) return { feed: cache ? cache.feed : null, error: "nourl" };
+  let firstErr = null;
   try {
-    const r = new Request(FEED_URL + "?t=" + Date.now());
-    r.timeoutInterval = 15;
-    const feed = await r.loadJSON();
-    if (!feed || typeof feed !== "object") throw new Error("parse");
-    writeCache("feed", { feed });
+    const g = JSON.parse(await fetchText(`https://api.github.com/gists/${id}`));
+    const f = g.files && g.files[FEED_FILE];
+    if (!f) throw new Error("nofile");
+    const feed = parseFeed(f.truncated ? await fetchText(f.raw_url) : f.content);
+    writeCache("feed", { feed, owner: g.owner && g.owner.login });
     return { feed, error: null };
   } catch (e) {
-    return { feed: cache ? cache.feed : null, error: e.message || "network" };
+    firstErr = e.message || "network";
   }
+  const owner = cache && cache.owner;
+  if (owner) {
+    try {
+      const feed = parseFeed(await fetchText(`https://gist.githubusercontent.com/${owner}/${id}/raw/${FEED_FILE}?t=${Date.now()}`));
+      writeCache("feed", { feed, owner });
+      return { feed, error: null };
+    } catch (e) { /* 兩種都失敗，回報第一個錯誤 */ }
+  }
+  return { feed: cache ? cache.feed : null, error: firstErr };
 }
 
 function parseClaude(feed) {
@@ -196,6 +234,10 @@ function ringImage(size, pct, color) {
 
 const ERR_TEXT = {
   nourl: "尚未設定 FEED_URL",
+  http404: "找不到 Gist（代號錯了？）",
+  http403: "GitHub 暫時限制讀取",
+  http429: "GitHub 暫時限制讀取",
+  nofile: "Gist 裡沒有額度資料",
   noclaude: "電腦尚未上傳 Claude 資料",
 };
 
@@ -259,10 +301,13 @@ function addSection(stack, title, color, rows, note, noteColor, width, compact, 
 }
 
 // 右上角的小字：多久前更新、電腦離線、或電腦那邊讀取失敗
+//   先判斷「手機讀不到 Gist」，再判斷「電腦太久沒上傳」，兩者不能混在一起
+//   （2026-11-19 曾因帳號改名讀不到，卻誤顯示成電腦離線）
 function sourceNote(at, srcError, netError) {
+  if (netError) return { text: "讀取失敗" + (at ? " · " + agoText(at) : ""), color: C_WARN };
   if (!at) return { text: "", color: C_SUB };
   if (Date.now() - at > STALE_MIN * 60e3) return { text: "電腦離線 · " + agoText(at), color: C_WARN };
-  if (srcError || netError) return { text: "⚠︎ " + agoText(at), color: C_WARN };
+  if (srcError) return { text: "⚠︎ " + agoText(at), color: C_WARN };
   return { text: agoText(at), color: C_SUB };
 }
 

@@ -5,3 +5,8 @@ agy-usage.json
 notify-state.txt
 probe/
 claude-login-expiry-check.txt
+
+# 填好個人 Gist 代號的手機版本
+iphone/AI-Usage.mine.js
+test-results.html
+test-results.png

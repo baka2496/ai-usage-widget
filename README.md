@@ -31,7 +31,7 @@ agy    -p /usage --output-format json ─┴──►  私密 Gist  ◄── �
    - 把腳本複製到 `%USERPROFILE%\ai-usage-widget`
    - 建立私密 Gist（已經有的話沿用同一個）
    - 註冊工作排程「AI Usage Widget - agy push」（登入時，以及之後每 15 分鐘）
-   - 立刻上傳一次，最後**印出 Gist 網址**
+   - 立刻上傳一次，最後**印出 Gist 代號**（32 碼英數）
 2. 如果建立 Gist 失敗，多半是 `gh` 沒有 gist 權限：先執行 `gh auth refresh -s gist`，再跑一次 install。
 3. 執行紀錄在 `%USERPROFILE%\ai-usage-widget\push.log`。
 
@@ -54,7 +54,7 @@ agy    -p /usage --output-format json ─┴──►  私密 Gist  ◄── �
 
 1. 從 App Store 安裝 **Scriptable**（免費）。
 2. 在 Scriptable 新增一個腳本，把 `iphone/AI-Usage.js` 整份貼進去，命名為 `AI Usage`。
-3. 把電腦安裝時印出的 Gist 網址貼到最上面的 `FEED_URL = ""` 引號裡。
+3. 把電腦安裝時印出的 Gist 代號貼到最上面的 `FEED_URL = ""` 引號裡（貼完整的 Gist 網址也可以，小工具只取裡面的代號）。小工具透過 GitHub API 用代號讀取，所以 GitHub 帳號改名也不會壞；API 每小時 60 次的免登入額度用完時，會自動改用 raw 網址。
 4. 按 ▶ 執行一次，會出現中尺寸預覽。
 5. 回主畫面長按 → 加入小工具 → Scriptable → 選尺寸 → 長按小工具「編輯」→ Script 選 `AI Usage`。
 
@@ -73,7 +73,15 @@ agy    -p /usage --output-format json ─┴──►  私密 Gist  ◄── �
 
 ## 疑難排解
 
-- **顯示「電腦離線」**：電腦關機、睡眠，或排程失敗。看 `push.log`。
+- **顯示「讀取失敗」**：手機讀不到 Gist（網路斷了、代號貼錯、GitHub 暫時限制）。電腦那邊可能是正常的。
+- **顯示「電腦離線」**：手機讀得到 Gist，但電腦超過 45 分鐘沒上傳：電腦關機、睡眠，或排程失敗。看 `push.log`。
+
+## 自動測試
+
+```bash
+node tests/widget.test.js                                   # 小工具：讀取方式、錯誤顯示、各尺寸
+powershell -ExecutionPolicy Bypass -File pc\test-notify.ps1  # 續期視窗的安全設定
+```
 - **push.log 出現「claude 失敗」**：在終端機執行 `claude auth login` 重新登入。
 - **push.log 出現「agy 失敗」**：在終端機執行 `agy` 重新登入。
 - **iOS 小工具更新頻率**由系統決定（通常 15～30 分鐘一次）。

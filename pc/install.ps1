@@ -59,5 +59,6 @@ Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $repeat, $lo
 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dst 'push-agy-usage.ps1')
 
 Write-Host ''
-Write-Host '安裝完成。把下面這個網址貼到 iPhone 小工具腳本最上面的 FEED_URL：'
-Write-Host $cfg.raw_url
+Write-Host '安裝完成。把下面這個 Gist 代號貼到 iPhone 小工具腳本最上面的 FEED_URL 引號裡：'
+Write-Host $cfg.gist_id
+Write-Host '（只用代號、不含帳號名稱，GitHub 帳號改名也不用重貼）'
