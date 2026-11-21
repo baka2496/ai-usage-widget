@@ -47,6 +47,8 @@ function Get-AgyUsage($cfg, $dir) {
                 window    = [string]$b.window
                 remaining = [double]$b.remaining_fraction
                 reset     = [string]$b.reset_time
+                # 例如每週額度用完時，5 小時限制會變成 disabled（暫不適用），不能當成「剩 100%」
+                disabled  = [bool]$b.disabled
             }
         }
         $groups += [ordered]@{ name = [string]$g.name; buckets = $buckets }

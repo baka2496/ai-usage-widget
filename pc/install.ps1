@@ -10,7 +10,7 @@ $agy = (Get-Command agy -ErrorAction Stop).Source
 $gh  = (Get-Command gh  -ErrorAction Stop).Source
 $claude = (Get-Command claude -ErrorAction SilentlyContinue).Source
 if (-not $claude -and (Test-Path "$env:USERPROFILE\.local\bin\claude.exe")) { $claude = "$env:USERPROFILE\.local\bin\claude.exe" }
-if (-not $claude) { Write-Warning '找不到 claude 指令，小工具將只顯示 Gemini' }
+if (-not $claude) { Write-Warning '找不到 claude 指令，小工具將只顯示 Antigravity' }
 
 New-Item -ItemType Directory -Force $dst | Out-Null
 Copy-Item (Join-Path $src 'push-agy-usage.ps1'), (Join-Path $src 'run-hidden.vbs'),

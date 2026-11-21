@@ -84,7 +84,7 @@ function run({ feedUrl = GIST, routes = {}, cache = null, family = "medium", par
 const apiOk = (feed) => ({ code: 200, body: { owner: { login: "newname" }, files: { "agy-usage.json": { truncated: false, content: JSON.stringify(feed) } } } });
 
 const cases = [
-  ["正常讀取：顯示 Claude 和 Gemini 的數字，右上角是「剛剛」", async () => {
+  ["正常讀取：顯示 Claude 和 Antigravity 的數字，右上角是「剛剛」", async () => {
     const r = await run({ routes: { api: apiOk(sampleFeed()) } });
     return r.texts.includes("30%") && r.texts.includes("76%") && r.texts.includes("剛剛") && !r.texts.some((t) => /離線|失敗/.test(t));
   }],
@@ -123,6 +123,27 @@ const cases = [
   ["Claude 登入剩 2 天：顯示紅字提醒", async () => {
     const r = await run({ routes: { api: apiOk(sampleFeed({ expiresIn: 2 * D + H })) } });
     return r.texts.some((t) => t.startsWith("登入剩 2天"));
+  }],
+  ["標題寫 Antigravity，不寫 Gemini（Gemini App 是另一個額度，2026-11-22 的誤會）", async () => {
+    for (const f of ["small", "medium", "large", "accessoryRectangular", "accessoryInline", "accessoryCircular"]) {
+      const r = await run({ family: f, param: "antigravity", routes: { api: apiOk(sampleFeed()) } });
+      if (r.texts.some((t) => /Gemini|\bG \d|^G /.test(t))) return false;
+      const want = f === "accessoryInline" ? /· A / : f === "accessoryCircular" ? /^A / : /^Antigravity/;
+      if (!r.texts.some((t) => want.test(t))) return false;
+    }
+    return true;
+  }],
+  ["停用的額度（disabled）不顯示，不能變成 0%", async () => {
+    const feed = sampleFeed();
+    feed.agy.groups.push({ name: "Claude and GPT models", buckets: [
+      { id: "3p-5h", window: "5h", remaining: 1, reset: "", disabled: true },
+      { id: "3p-weekly", window: "weekly", remaining: 0.6, reset: iso(5 * D), disabled: false } ] });
+    const r = await run({ family: "large", routes: { api: apiOk(feed) } });
+    return !r.texts.includes("Claude/GPT 5h") && r.texts.includes("Claude/GPT 週") && r.texts.includes("40%");
+  }],
+  ["鎖定畫面圓形的舊參數 gemini 仍然顯示 Antigravity 額度", async () => {
+    const r = await run({ family: "accessoryCircular", param: "gemini", routes: { api: apiOk(sampleFeed()) } });
+    return r.texts.includes("A 0");
   }],
   ["所有尺寸都畫得出來（小/中/大/鎖定畫面三種）", async () => {
     for (const f of ["small", "medium", "large", "accessoryRectangular", "accessoryCircular", "accessoryInline"]) {

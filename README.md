@@ -3,7 +3,9 @@
 iPhone 主畫面／鎖定畫面小工具，顯示：
 
 - **Claude**：5 小時、每週、各模型的每週額度（跟 Claude Code 的 `/usage` 一樣）
-- **Gemini（Antigravity CLI）**：Gemini 5 小時／每週、Argon 每週，選擇性顯示 Claude/GPT 那組
+- **Antigravity CLI**：5 小時／每週、Argon 每週，選擇性顯示 Claude/GPT 那組（停用中的限制不顯示）
+
+> **和 Gemini App 的額度是分開的。** gemini.google.com 用量頁上的「目前用量／每週」是 Gemini App 的額度，重置時間和數字都跟 Antigravity 不同，對不上是正常的。這個小工具只顯示 `agy /usage` 的 Antigravity 額度。
 
 ```
 Windows 電腦（每 15 分鐘）                       GitHub               iPhone（Scriptable）
@@ -62,12 +64,12 @@ agy    -p /usage --output-format json ─┴──►  私密 Gist  ◄── �
 
 | 位置 | 內容 | Parameter |
 |---|---|---|
-| 小 | Claude、Gemini 各自的 5 小時和每週 | — |
-| 中（推薦） | 左邊 Claude、右邊 Gemini，含重置倒數 | `all`：右欄改成也顯示 Claude/GPT 那組 |
+| 小 | Claude、Antigravity 各自的 5 小時和每週 | — |
+| 中（推薦） | 左邊 Claude、右邊 Antigravity，含重置倒數 | `all`：右欄改成也顯示 Claude/GPT 那組 |
 | 大 | 全部項目 | — |
-| 鎖定畫面・長方形 | `Claude 5h 30% 週 5%` / `Gemini 5h 0% 週 0%` | — |
-| 鎖定畫面・圓形 | 5 小時額度圓環 | `claude`（預設）或 `gemini` |
-| 鎖定畫面・單行 | `C 30% · G 0%` | — |
+| 鎖定畫面・長方形 | `Claude 5h 30% 週 5%` / `Antigravity 5h 0% 週 0%` | — |
+| 鎖定畫面・圓形 | 5 小時額度圓環 | `claude`（預設）或 `antigravity`（舊的 `gemini` 也可以） |
+| 鎖定畫面・單行 | `C 30% · A 0%` | — |
 
 數字都是**已使用 %**，70% 以上變黃、90% 以上變紅。
 
