@@ -10,7 +10,7 @@ const GIST = "0123456789abcdef0123456789abcdef";
 const iso = (ms) => new Date(Date.now() + ms).toISOString().replace(/\.\d+Z$/, "Z");
 const H = 3600e3, D = 86400e3;
 
-function sampleFeed({ fetchedAgo = 0, expiresIn = 20 * D } = {}) {
+function sampleFeed({ fetchedAgo = 0, expiresIn = 20 * D, gemini = true, geminiError = null } = {}) {
   const at = iso(-fetchedAgo);
   return {
     v: 2, fetched_at: at,
@@ -23,6 +23,8 @@ function sampleFeed({ fetchedAgo = 0, expiresIn = 20 * D } = {}) {
     claude: { fetched_at: at, error: null, login_expires_at: iso(expiresIn), rows: [
       { kind: "session", model: null, used: 30, reset: iso(1 * H) },
       { kind: "weekly_all", model: null, used: 76, reset: iso(3 * D) } ] },
+    ...(gemini ? { gemini_app: { fetched_at: at, error: geminiError,
+      current: { used: 26, reset: iso(3 * H) }, weekly: { used: 16, reset: iso(2 * D) } } } : {}),
   };
 }
 
@@ -84,7 +86,7 @@ function run({ feedUrl = GIST, routes = {}, cache = null, family = "medium", par
 const apiOk = (feed) => ({ code: 200, body: { owner: { login: "newname" }, files: { "agy-usage.json": { truncated: false, content: JSON.stringify(feed) } } } });
 
 const cases = [
-  ["正常讀取：顯示 Claude 和 Antigravity 的數字，右上角是「剛剛」", async () => {
+  ["正常讀取：顯示 Claude、Gemini App、Antigravity 的數字，右上角是「剛剛」", async () => {
     const r = await run({ routes: { api: apiOk(sampleFeed()) } });
     return r.texts.includes("30%") && r.texts.includes("76%") && r.texts.includes("剛剛") && !r.texts.some((t) => /離線|失敗/.test(t));
   }],
@@ -124,14 +126,41 @@ const cases = [
     const r = await run({ routes: { api: apiOk(sampleFeed({ expiresIn: 2 * D + H })) } });
     return r.texts.some((t) => t.startsWith("登入剩 2天"));
   }],
-  ["標題寫 Antigravity，不寫 Gemini（Gemini App 是另一個額度，2026-11-22 的誤會）", async () => {
-    for (const f of ["small", "medium", "large", "accessoryRectangular", "accessoryInline", "accessoryCircular"]) {
-      const r = await run({ family: f, param: "antigravity", routes: { api: apiOk(sampleFeed()) } });
-      if (r.texts.some((t) => /Gemini|\bG \d|^G /.test(t))) return false;
-      const want = f === "accessoryInline" ? /· A / : f === "accessoryCircular" ? /^A / : /^Antigravity/;
-      if (!r.texts.some((t) => want.test(t))) return false;
+  ["Antigravity 標成 Antigravity、Gemini App 標成 Gemini App，不會混在一起（2026-11-22 的誤會）", async () => {
+    // Antigravity 的數字是 0%（剩 98%/100%），Gemini App 是 26%/16%
+    for (const f of ["medium", "large"]) {
+      const r = await run({ family: f, routes: { api: apiOk(sampleFeed()) } });
+      const ai = r.texts.indexOf("Antigravity"), gi = r.texts.indexOf("Gemini App");
+      if (ai < 0 || gi < 0 || ai < gi) return false;
+      const gSeg = r.texts.slice(gi, ai);
+      if (!gSeg.includes("26%") || !gSeg.includes("16%")) return false;
+      if (r.texts.slice(ai).includes("26%")) return false;
     }
     return true;
+  }],
+  ["小尺寸：預設顯示 Gemini App，參數 antigravity 改顯示 Antigravity", async () => {
+    const a = await run({ family: "small", routes: { api: apiOk(sampleFeed()) } });
+    const b = await run({ family: "small", param: "antigravity", routes: { api: apiOk(sampleFeed()) } });
+    return a.texts.includes("Gemini App") && a.texts.includes("26%") && !a.texts.includes("Antigravity")
+      && b.texts.includes("Antigravity") && !b.texts.includes("Gemini App");
+  }],
+  ["鎖定畫面：單行 C·G·A 三個數字、長方形三行", async () => {
+    const i = await run({ family: "accessoryInline", routes: { api: apiOk(sampleFeed()) } });
+    const r = await run({ family: "accessoryRectangular", routes: { api: apiOk(sampleFeed()) } });
+    return i.texts[0] === "C 30% · G 26% · A 0%"
+      && r.texts.includes("Claude  5h 30%  週 76%") && r.texts.includes("Gemini  目前 26%  週 16%") && r.texts.includes("Antigravity  5h 0%  週 2%");
+  }],
+  ["鎖定畫面圓形：gemini → Gemini App、antigravity → Antigravity、預設 Claude", async () => {
+    const t = async (param) => (await run({ family: "accessoryCircular", param, routes: { api: apiOk(sampleFeed()) } })).texts.join("|");
+    return (await t("gemini")) === "G 26" && (await t("antigravity")) === "A 0" && (await t("")) === "C 30";
+  }],
+  ["Google 登入過期：Gemini App 顯示紅字「Google 需重新登入」", async () => {
+    const r = await run({ routes: { api: apiOk(sampleFeed({ geminiError: "login" })) } });
+    return r.texts.includes("Google 需重新登入");
+  }],
+  ["電腦還沒上傳 Gemini 資料（舊版 Gist）：顯示說明，不顯示假的 0%", async () => {
+    const r = await run({ routes: { api: apiOk(sampleFeed({ gemini: false })) } });
+    return r.texts.includes("電腦尚未上傳 Gemini 資料");
   }],
   ["停用的額度（disabled）不顯示，不能變成 0%", async () => {
     const feed = sampleFeed();
@@ -140,10 +169,6 @@ const cases = [
       { id: "3p-weekly", window: "weekly", remaining: 0.6, reset: iso(5 * D), disabled: false } ] });
     const r = await run({ family: "large", routes: { api: apiOk(feed) } });
     return !r.texts.includes("Claude/GPT 5h") && r.texts.includes("Claude/GPT 週") && r.texts.includes("40%");
-  }],
-  ["鎖定畫面圓形的舊參數 gemini 仍然顯示 Antigravity 額度", async () => {
-    const r = await run({ family: "accessoryCircular", param: "gemini", routes: { api: apiOk(sampleFeed()) } });
-    return r.texts.includes("A 0");
   }],
   ["所有尺寸都畫得出來（小/中/大/鎖定畫面三種）", async () => {
     for (const f of ["small", "medium", "large", "accessoryRectangular", "accessoryCircular", "accessoryInline"]) {

@@ -1,17 +1,29 @@
-# AI 額度小工具（Claude + Antigravity CLI）
+# AI 額度小工具（Claude + Gemini App + Antigravity CLI）
 
 iPhone 主畫面／鎖定畫面小工具，顯示：
 
 - **Claude**：5 小時、每週、各模型的每週額度（跟 Claude Code 的 `/usage` 一樣）
-- **Antigravity CLI**：5 小時／每週、Argon 每週，選擇性顯示 Claude/GPT 那組（停用中的限制不顯示）
+- **Gemini App**：gemini.google.com/usage 上的「目前用量」和「每週上限」
+- **Antigravity CLI**：5 小時／每週、Argon 每週、Claude/GPT 那組（停用中的限制不顯示）
 
-> **和 Gemini App 的額度是分開的。** gemini.google.com 用量頁上的「目前用量／每週」是 Gemini App 的額度，重置時間和數字都跟 Antigravity 不同，對不上是正常的。這個小工具只顯示 `agy /usage` 的 Antigravity 額度。
+> **Gemini App 和 Antigravity 的額度是分開算的**：重置時間和數字都不同，所以小工具分成兩欄。
 
 ```
 Windows 電腦（每 15 分鐘）                       GitHub               iPhone（Scriptable）
 claude -p /usage --output-format json ─┐
-agy    -p /usage --output-format json ─┴──►  私密 Gist  ◄── 讀取 ──  AI-Usage.js
+agy    -p /usage --output-format json ─┼──►  私密 Gist  ◄── 讀取 ──  AI-Usage.js
+Edge（背景）讀 gemini.google.com/usage ─┘
 ```
+
+### Gemini App 用量怎麼讀（非官方）
+
+Google 沒有提供讀取 Gemini App 用量的官方介面。電腦用一個**專用的 Edge 設定檔**（`%USERPROFILE%\ai-usage-widget\gemini-profile`，跟你平常的 Edge 分開）在背景打開用量頁、讀出頁面上的文字（`pc/read-gemini-usage.js`）。
+
+- 第一次安裝會跳出這個專用 Edge 視窗，登入 Google、看到用量頁後關掉視窗即可。
+- Google 登入過期時，小工具會顯示紅字「Google 需重新登入」，執行 `%USERPROFILE%\ai-usage-widget\gemini-login.ps1` 重新登入。
+- 登入狀態只存在這台電腦，不會上傳；Gist 裡只有百分比和重設時間。
+- Google 改版時可能讀不到（push.log 會寫「看不懂 Gemini 用量頁」），需要更新 `parseUsage()`。
+- 需要 Node.js（`node` 指令）和 Microsoft Edge。
 
 - 兩個 `/usage` 都是內建指令，**不會呼叫模型、不花 token**。
 - 手機不需要登入任何帳號。電腦關機或睡眠時數字不會更新，小工具會顯示「電腦離線 · X前」。
@@ -64,12 +76,12 @@ agy    -p /usage --output-format json ─┴──►  私密 Gist  ◄── �
 
 | 位置 | 內容 | Parameter |
 |---|---|---|
-| 小 | Claude、Antigravity 各自的 5 小時和每週 | — |
-| 中（推薦） | 左邊 Claude、右邊 Antigravity，含重置倒數 | `all`：右欄改成也顯示 Claude/GPT 那組 |
-| 大 | 全部項目 | — |
-| 鎖定畫面・長方形 | `Claude 5h 30% 週 5%` / `Antigravity 5h 0% 週 0%` | — |
-| 鎖定畫面・圓形 | 5 小時額度圓環 | `claude`（預設）或 `antigravity`（舊的 `gemini` 也可以） |
-| 鎖定畫面・單行 | `C 30% · A 0%` | — |
+| 小 | Claude 和 Gemini App | `antigravity`：下半部改顯示 Antigravity |
+| 中（推薦） | 左邊 Claude（含重置倒數）、右邊上下是 Gemini App 和 Antigravity | — |
+| 大 | 三組全部項目，含重置倒數 | — |
+| 鎖定畫面・長方形 | `Claude 5h 30% 週 5%` / `Gemini 目前 26% 週 16%` / `Antigravity 5h 0% 週 0%`（Claude 登入快到期時，第三行改成提醒） | — |
+| 鎖定畫面・圓形 | 5 小時額度圓環 | `claude`（預設）、`gemini`（Gemini App）或 `antigravity` |
+| 鎖定畫面・單行 | `C 30% · G 26% · A 0%` | — |
 
 數字都是**已使用 %**，70% 以上變黃、90% 以上變紅。
 
@@ -82,8 +94,11 @@ agy    -p /usage --output-format json ─┴──►  私密 Gist  ◄── �
 
 ```bash
 node tests/widget.test.js                                   # 小工具：讀取方式、錯誤顯示、各尺寸
+node tests/gemini-parse.test.js                             # Gemini 用量頁的解析（用真實頁面文字）
 powershell -ExecutionPolicy Bypass -File pc\test-notify.ps1  # 續期視窗的安全設定
 ```
 - **push.log 出現「claude 失敗」**：在終端機執行 `claude auth login` 重新登入。
 - **push.log 出現「agy 失敗」**：在終端機執行 `agy` 重新登入。
+- **push.log 出現「Google 登入過期」**：執行 `gemini-login.ps1`。
+- **push.log 出現「專用 Edge 沒有啟動」**：登入用的那個 Edge 視窗還開著，關掉就好。
 - **iOS 小工具更新頻率**由系統決定（通常 15～30 分鐘一次）。

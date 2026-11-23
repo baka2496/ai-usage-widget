@@ -3,14 +3,14 @@
 // icon-color: deep-gray; icon-glyph: tachometer-alt;
 
 // ============================================================
-//  AI 額度小工具：Claude + Antigravity CLI
-//  注意：這裡的 Antigravity 額度和 Gemini App（gemini.google.com）的額度是分開的。
-//  電腦每 15 分鐘把 `claude /usage` 和 `agy /usage` 上傳到私密 Gist，
+//  AI 額度小工具：Claude + Gemini App + Antigravity CLI
+//  注意：Gemini App（gemini.google.com）和 Antigravity CLI 的額度是分開計算的。
+//  電腦每 15 分鐘把 `claude /usage`、`agy /usage` 和 Gemini 用量頁上傳到私密 Gist，
 //  這裡只讀 Gist，手機不需要登入任何帳號。
 //
 //  小工具參數（長按小工具 → 編輯小工具 → Parameter）：
-//    鎖定畫面圓形：claude 或 antigravity（預設 claude）
-//    中/大尺寸：all  → Antigravity 也顯示「Claude 和 GPT」那組額度
+//    鎖定畫面圓形：claude（預設）、gemini（Gemini App）或 antigravity
+//    小尺寸：antigravity → 下半部改顯示 Antigravity（預設 Gemini App）
 // ============================================================
 
 // ★ 把電腦 install.ps1 最後印出來的 Gist 代號（或完整網址）貼在這裡
@@ -21,7 +21,8 @@ const STALE_MIN = 45;     // 資料超過這麼久沒更新 → 顯示「電腦�
 const EXPIRY_WARN_DAYS = 3; // Claude 登入剩幾天內開始提醒
 
 const C_CLAUDE = new Color("#D97757");
-const C_GEMINI = new Color("#4C8DF6");
+const C_GEMINI = new Color("#4C8DF6"); // Gemini App
+const C_AGY = new Color("#2FB39A");    // Antigravity
 const C_WARN = new Color("#F5A623");
 const C_DANGER = new Color("#E5484D");
 const C_TRACK = Color.dynamic(new Color("#000000", 0.10), new Color("#FFFFFF", 0.16));
@@ -115,6 +116,16 @@ function parseClaude(feed) {
     error: c.error ? "pc" : null,
     expires: c.login_expires_at ? Date.parse(c.login_expires_at) : null,
   };
+}
+
+// Gemini App（gemini.google.com/usage）：「目前用量」和「每週上限」
+function parseGeminiApp(feed) {
+  const g = feed && feed.gemini_app;
+  if (!g) return { rows: [], at: null, error: "nogemini" };
+  const rows = [];
+  if (g.current) rows.push({ label: "目前", used: clamp(g.current.used), reset: g.current.reset || null });
+  if (g.weekly) rows.push({ label: "每週", used: clamp(g.weekly.used), reset: g.weekly.reset || null });
+  return { rows, at: g.fetched_at ? Date.parse(g.fetched_at) : null, error: g.error || null };
 }
 
 const AGY_GROUP_LABEL = {
@@ -241,6 +252,7 @@ const ERR_TEXT = {
   http429: "GitHub 暫時限制讀取",
   nofile: "Gist 裡沒有額度資料",
   noclaude: "電腦尚未上傳 Claude 資料",
+  nogemini: "電腦尚未上傳 Gemini 資料",
 };
 
 // ------------------------------------------------------------
@@ -333,24 +345,28 @@ async function buildWidget(family, param) {
   const agy = agySource(feed);
   const cRows = claude.rows;
   const gRows = parseAgy(agy.groups, showAll);
+  const app = parseGeminiApp(feed);
+  const aRows = app.rows;
   const noData = ERR_TEXT[netErr] || (netErr ? "讀取失敗" : null);
   const cErr = noData || ERR_TEXT[claude.error] || null;
   const gErr = noData;
+  const aErr = noData || (app.error === "nogemini" ? ERR_TEXT.nogemini : null);
 
   const w = new ListWidget();
   w.refreshAfterDate = new Date(Date.now() + 15 * 60e3);
 
   // ---------- 鎖定畫面 ----------
   if (family === "accessoryInline") {
-    const c = pick(cRows, ["5 小時"])[0], g = pick(gRows, ["5 小時"])[0];
-    w.addText(`C ${c ? c.used + "%" : "—"} · A ${g ? g.used + "%" : "—"}`);
+    const c = pick(cRows, ["5 小時"])[0], a = pick(aRows, ["目前"])[0], g = pick(gRows, ["5 小時"])[0];
+    const v = (r) => (r ? r.used + "%" : "—");
+    w.addText(`C ${v(c)} · G ${v(a)} · A ${v(g)}`);
     return w;
   }
   if (family === "accessoryCircular") {
-    // 舊參數 gemini / g 也繼續接受
-    const isG = /antigravity|agy|gemini|^[ag]$/i.test(param.trim());
-    const rows = isG ? gRows : cRows;
-    const r = pick(rows, ["5 小時"])[0];
+    // gemini / g → Gemini App；antigravity / agy / a → Antigravity；其他 → Claude
+    const p = param.trim();
+    const which = /^(antigravity|agy|a)$/i.test(p) ? "A" : /^(gemini|g)$/i.test(p) ? "G" : "C";
+    const r = which === "A" ? pick(gRows, ["5 小時"])[0] : which === "G" ? pick(aRows, ["目前"])[0] : pick(cRows, ["5 小時"])[0];
     w.addAccessoryWidgetBackground = true;
     const s = w.addStack();
     s.layoutVertically();
@@ -358,30 +374,28 @@ async function buildWidget(family, param) {
     const img = s.addImage(ringImage(56, r ? r.used : 0, Color.white()));
     img.imageSize = new Size(44, 44);
     img.centerAlignImage();
-    const t = s.addText(`${isG ? "A" : "C"} ${r ? r.used : "—"}`);
+    const t = s.addText(`${which} ${r ? r.used : "—"}`);
     t.font = Font.boldSystemFont(11);
     t.centerAlignText();
     return w;
   }
   if (family === "accessoryRectangular") {
-    const line = (name, rows) => {
-      const a = pick(rows, ["5 小時"])[0], b = pick(rows, ["每週"])[0];
-      const t = w.addText(`${name}  5h ${a ? a.used + "%" : "—"}  週 ${b ? b.used + "%" : "—"}`);
+    const line = (name, rows, firstLabel, firstShort) => {
+      const a = pick(rows, [firstLabel])[0], b = pick(rows, ["每週"])[0];
+      const t = w.addText(`${name}  ${firstShort} ${a ? a.used + "%" : "—"}  週 ${b ? b.used + "%" : "—"}`);
       t.font = Font.semiboldSystemFont(13);
       t.lineLimit = 1;
       t.minimumScaleFactor = 0.7;
     };
-    line("Claude", cRows);
-    line("Antigravity", gRows);
-    const c = pick(cRows, ["5 小時"])[0];
+    line("Claude", cRows, "5 小時", "5h");
+    line("Gemini", aRows, "目前", "目前");
     const exp = expiryText(claude.expires);
     if (exp) {
+      // 登入快到期比 Antigravity 重要，放第三行
       const t = w.addText("⚠︎ Claude " + exp);
       t.font = Font.semiboldSystemFont(11);
-    } else if (c && c.reset) {
-      const t = w.addText("Claude 重置 " + untilText(c.reset));
-      t.font = Font.systemFont(11);
-      t.textOpacity = 0.7;
+    } else {
+      line("Antigravity", gRows, "5 小時", "5h");
     }
     return w;
   }
@@ -391,13 +405,19 @@ async function buildWidget(family, param) {
   const exp = expiryText(claude.expires);
   const cn = exp ? { text: exp, color: C_DANGER } : sourceNote(claude.at, claude.error === "pc", netErr);
   const gn = sourceNote(agy.at, agy.error, netErr);
+  const an = app.error === "login" && !netErr ? { text: "Google 需重新登入", color: C_DANGER }
+    : sourceNote(app.at, app.error && app.error !== "nogemini", netErr);
 
   if (family === "small") {
-    w.setPadding(12, 12, 12, 12);
+    w.setPadding(10, 12, 10, 12);
     const width = 128;
     addSection(w, "Claude", C_CLAUDE, pick(cRows, ["5 小時", "每週"]), cn.text, cn.color, width, true, cErr);
     w.addSpacer();
-    addSection(w, "Antigravity", C_GEMINI, pick(gRows, ["5 小時", "每週"]), gn.text, gn.color, width, true, gErr);
+    if (/^(antigravity|agy|a)$/i.test(param.trim())) {
+      addSection(w, "Antigravity", C_AGY, pick(gRows, ["5 小時", "每週"]), gn.text, gn.color, width, true, gErr);
+    } else {
+      addSection(w, "Gemini App", C_GEMINI, aRows, an.text, an.color, width, true, aErr);
+    }
     return w;
   }
 
@@ -405,14 +425,17 @@ async function buildWidget(family, param) {
     w.setPadding(16, 16, 16, 16);
     const width = 290;
     addSection(w, "Claude", C_CLAUDE, cRows, cn.text, cn.color, width, false, cErr);
-    w.addSpacer(16);
-    addSection(w, "Antigravity", C_GEMINI, parseAgy(agy.groups, true), gn.text, gn.color, width, false, gErr);
+    w.addSpacer(12);
+    addSection(w, "Gemini App", C_GEMINI, aRows, an.text, an.color, width, false, aErr);
+    w.addSpacer(12);
+    const all = parseAgy(agy.groups, true);
+    addSection(w, "Antigravity", C_AGY, all, gn.text, gn.color, width, all.length > 3, gErr);
     w.addSpacer();
     return w;
   }
 
-  // medium（預設）
-  w.setPadding(14, 14, 14, 14);
+  // medium（預設）：右欄放兩組，上下留白比左右少一點
+  w.setPadding(10, 14, 10, 14);
   const row = w.addStack();
   row.topAlignContent();
   const width = 138;
@@ -422,8 +445,10 @@ async function buildWidget(family, param) {
   row.addSpacer(16);
   const right = row.addStack();
   right.layoutVertically();
-  const gShown = gRows.slice(0, showAll ? 4 : 3);
-  addSection(right, "Antigravity", C_GEMINI, gShown, gn.text, gn.color, width, gShown.length > 3, gErr);
+  // 右欄上下兩組：Gemini App、Antigravity（精簡版，不含重置倒數）
+  addSection(right, "Gemini App", C_GEMINI, aRows, an.text, an.color, width, true, aErr);
+  right.addSpacer(4);
+  addSection(right, "Antigravity", C_AGY, pick(gRows, ["5 小時", "每週"]), gn.text, gn.color, width, true, gErr);
   w.addSpacer();
   return w;
 }

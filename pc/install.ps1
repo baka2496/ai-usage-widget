@@ -12,9 +12,17 @@ $claude = (Get-Command claude -ErrorAction SilentlyContinue).Source
 if (-not $claude -and (Test-Path "$env:USERPROFILE\.local\bin\claude.exe")) { $claude = "$env:USERPROFILE\.local\bin\claude.exe" }
 if (-not $claude) { Write-Warning '找不到 claude 指令，小工具將只顯示 Antigravity' }
 
+# Gemini App 用量：需要 Node.js 和 Edge（用專用設定檔在背景讀 gemini.google.com/usage）
+$node = (Get-Command node -ErrorAction SilentlyContinue).Source
+$edge = @("${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe", "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe") |
+        Where-Object { Test-Path $_ } | Select-Object -First 1
+if (-not $node -or -not $edge) { Write-Warning '找不到 node 或 Edge，小工具不會顯示 Gemini App 用量' }
+$geminiProfile = Join-Path $dst 'gemini-profile'
+
 New-Item -ItemType Directory -Force $dst | Out-Null
 Copy-Item (Join-Path $src 'push-agy-usage.ps1'), (Join-Path $src 'run-hidden.vbs'),
-          (Join-Path $src 'notify-renew.ps1'), (Join-Path $src 'renew.ps1') $dst -Force
+          (Join-Path $src 'notify-renew.ps1'), (Join-Path $src 'renew.ps1'),
+          (Join-Path $src 'read-gemini-usage.js'), (Join-Path $src 'gemini-login.ps1') $dst -Force
 
 $cfgPath = Join-Path $dst 'config.json'
 $cfg = $null
@@ -34,6 +42,9 @@ if (-not $cfg -or -not $cfg.gist_id) {
         agy_path    = $agy
         claude_path = $claude
         gh_path     = $gh
+        node_path   = $node
+        edge_path   = $edge
+        gemini_profile = $geminiProfile
     }
 } else {
     $cfg = [pscustomobject]@{
@@ -42,6 +53,9 @@ if (-not $cfg -or -not $cfg.gist_id) {
         agy_path    = $agy
         claude_path = $claude
         gh_path     = $gh
+        node_path   = $node
+        edge_path   = $edge
+        gemini_profile = $geminiProfile
     }
 }
 [IO.File]::WriteAllText($cfgPath, ($cfg | ConvertTo-Json), (New-Object Text.UTF8Encoding $false))
@@ -54,6 +68,11 @@ $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatt
             -ExecutionTimeLimit (New-TimeSpan -Minutes 5) -MultipleInstances IgnoreNew
 Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $repeat, $logon -Settings $settings `
     -Description '每 15 分鐘把 Antigravity CLI 額度上傳到 Gist，給 iPhone 小工具用' -Force | Out-Null
+
+# Gemini App 還沒登入過：打開專用 Edge 讓你登入一次（登入後關掉視窗，會自動上傳）
+if ($node -and $edge -and -not (Test-Path (Join-Path $geminiProfile 'Default'))) {
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dst 'gemini-login.ps1')
+}
 
 # 立刻跑一次
 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $dst 'push-agy-usage.ps1')

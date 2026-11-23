@@ -99,6 +99,31 @@ function Get-ClaudeUsage($cfg, $dir) {
     return , $rows
 }
 
+# ---------- Gemini App（gemini.google.com/usage） ----------
+# 用專用的 Edge 設定檔在背景讀取網頁（不是官方介面）。登入過期時請執行 gemini-login.ps1。
+function Get-GeminiAppUsage($cfg) {
+    $script = Join-Path $here 'read-gemini-usage.js'
+    $job = Start-Job -ScriptBlock {
+        param($node, $script, $edge, $prof)
+        [Console]::OutputEncoding = [Text.Encoding]::UTF8
+        & $node $script $edge $prof 2>$null | Out-String
+    } -ArgumentList $cfg.node_path, $script, $cfg.edge_path, $cfg.gemini_profile
+    if (-not (Wait-Job $job -Timeout 90)) {
+        Stop-Job $job; Remove-Job $job -Force
+        throw 'Gemini 用量頁超過 90 秒沒有回應'
+    }
+    $raw = Receive-Job $job
+    Remove-Job $job -Force
+    try { $j = $raw | ConvertFrom-Json } catch { throw ('讀 Gemini 用量頁的輸出不是 JSON：' + $raw.Substring(0, [Math]::Min(200, $raw.Length))) }
+    if (-not $j.ok) {
+        if ($j.error -eq 'login') { throw 'Google 登入過期（執行 gemini-login.ps1 重新登入）' }
+        if ($j.error -eq 'parse') { throw '看不懂 Gemini 用量頁（Google 可能改版了）' }
+        throw [string]$j.error
+    }
+    $pick = { param($x) if ($x) { [ordered]@{ used = [double]$x.used; reset = $(if ($x.reset) { [string]$x.reset } else { $null }) } } else { $null } }
+    return [ordered]@{ current = (& $pick $j.current); weekly = (& $pick $j.weekly) }
+}
+
 # ---------- 主程式 ----------
 try {
     $cfg = Get-Content (Join-Path $here 'config.json') -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -114,7 +139,12 @@ try {
         try { $claude = Get-ClaudeUsage $cfg $probeDir } catch { $claudeErr = $_.Exception.Message }
     } else { $claudeErr = '沒有設定 claude_path' }
 
-    if (-not $agy -and -not $claude) { throw "兩邊都失敗 — agy: $agyErr / claude: $claudeErr" }
+    $gem = $null; $gemErr = $null
+    if ($cfg.node_path -and $cfg.edge_path -and $cfg.gemini_profile -and (Test-Path $cfg.gemini_profile)) {
+        try { $gem = Get-GeminiAppUsage $cfg } catch { $gemErr = $_.Exception.Message }
+    } else { $gemErr = '沒有設定 Gemini App（執行 gemini-login.ps1）' }
+
+    if (-not $agy -and -not $claude -and -not $gem) { throw "全部失敗 — agy: $agyErr / claude: $claudeErr / gemini: $gemErr" }
 
     # 某一邊失敗時，沿用上一次成功的資料，並標記錯誤
     $outFile = Join-Path $here 'agy-usage.json'
@@ -138,6 +168,12 @@ try {
             login_expires_at = $expires
             rows       =$(if ($claude) { $claude } elseif ($prev -and $prev.claude) { $prev.claude.rows } else { @() })
         }
+        gemini_app = [ordered]@{
+            fetched_at = $(if ($gem) { $now } elseif ($prev -and $prev.gemini_app) { $prev.gemini_app.fetched_at } else { $null })
+            error      = $(if ($gemErr -and $gemErr -like 'Google 登入過期*') { 'login' } else { $gemErr })
+            current    = $(if ($gem) { $gem.current } elseif ($prev -and $prev.gemini_app) { $prev.gemini_app.current } else { $null })
+            weekly     = $(if ($gem) { $gem.weekly } elseif ($prev -and $prev.gemini_app) { $prev.gemini_app.weekly } else { $null })
+        }
     }
     $json = $payload | ConvertTo-Json -Depth 8 -Compress
     [IO.File]::WriteAllText($outFile, $json, (New-Object Text.UTF8Encoding $false))
@@ -157,6 +193,8 @@ try {
     }
     if ($agyErr) { $status += " (agy 失敗: $agyErr)" }
     if ($claudeErr) { $status += " (claude 失敗: $claudeErr)" }
+    if ($gem) { $status += " gemini $($gem.current.used)%/$($gem.weekly.used)%" }
+    if ($gemErr) { $status += " (gemini 失敗: $gemErr)" }
     Write-Log $status
 
     # Claude 登入剩 3 天內（或已過期）：另開一個程序跳出續期視窗，不卡住這次排程
