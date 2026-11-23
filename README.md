@@ -68,7 +68,7 @@ Google 沒有提供讀取 Gemini App 用量的官方介面。電腦用一個**�
 
 1. 從 App Store 安裝 **Scriptable**（免費）。
 2. 在 Scriptable 新增一個腳本，把 `iphone/AI-Usage.js` 整份貼進去，命名為 `AI Usage`。
-3. 把電腦安裝時印出的 Gist 代號貼到最上面的 `FEED_URL = ""` 引號裡（貼完整的 Gist 網址也可以，小工具只取裡面的代號）。小工具透過 GitHub API 用代號讀取，所以 GitHub 帳號改名也不會壞；API 每小時 60 次的免登入額度用完時，會自動改用 raw 網址。
+3. （自己的電腦上也可以執行 `node tests/make-mine.js`，直接產生填好代號的 `iphone/AI-Usage.mine.js`，整份貼上即可。）把電腦安裝時印出的 Gist 代號貼到最上面的 `FEED_URL = ""` 引號裡（貼完整的 Gist 網址也可以，小工具只取裡面的代號）。小工具透過 GitHub API 用代號讀取，所以 GitHub 帳號改名也不會壞；API 每小時 60 次的免登入額度用完時，會自動改用 raw 網址。
 4. 按 ▶ 執行一次，會出現中尺寸預覽。
 5. 回主畫面長按 → 加入小工具 → Scriptable → 選尺寸 → 長按小工具「編輯」→ Script 選 `AI Usage`。
 
@@ -95,6 +95,7 @@ Google 沒有提供讀取 Gemini App 用量的官方介面。電腦用一個**�
 ```bash
 node tests/widget.test.js                                   # 小工具：讀取方式、錯誤顯示、各尺寸
 node tests/gemini-parse.test.js                             # Gemini 用量頁的解析（用真實頁面文字）
+node tests/phone-script.test.js                             # 要貼到手機的檔案：語法、編碼、是不是最新版
 powershell -ExecutionPolicy Bypass -File pc\test-notify.ps1  # 續期視窗的安全設定
 ```
 - **push.log 出現「claude 失敗」**：在終端機執行 `claude auth login` 重新登入。
