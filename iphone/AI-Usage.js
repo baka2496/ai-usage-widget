@@ -126,7 +126,8 @@ function parseGeminiApp(feed) {
   const g = feed && feed.gemini_app;
   if (!g) return { rows: [], at: null, error: "nogemini" };
   const rows = [];
-  if (g.current) rows.push({ label: "目前", used: clamp(g.current.used), reset: g.current.reset || null });
+  // 用量頁寫「目前用量」，實際每 5 小時重設（2026-11-23→24 兩次重設時間差 20 小時＝4 個 5 小時）
+  if (g.current) rows.push({ label: "5 小時", used: clamp(g.current.used), reset: g.current.reset || null });
   if (g.weekly) rows.push({ label: "每週", used: clamp(g.weekly.used), reset: g.weekly.reset || null });
   return { rows, at: g.fetched_at ? Date.parse(g.fetched_at) : null, error: g.error || null };
 }
@@ -151,7 +152,7 @@ function paramLetters(param) {
   return [];
 }
 
-const SHORT = { "5 小時": "5h", "每週": "週", "目前": "目前", "每月": "月" };
+const SHORT = { "5 小時": "5h", "每週": "週", "每月": "月" };
 function shortLabel(l) { return SHORT[l] || l; }
 
 const AGY_GROUP_LABEL = {
@@ -384,7 +385,7 @@ async function buildWidget(family, param) {
     c: { name: "Claude", lock: "Claude", short: "C", color: C_CLAUDE, rows: claude.rows, first: "5 小時",
          note: exp ? { text: exp, color: C_DANGER } : sourceNote(claude.at, claude.error === "pc", netErr),
          err: noData || ERR_TEXT[claude.error] || null },
-    g: { name: "Gemini", lock: "Gemini", short: "G", color: C_GEMINI, rows: app.rows, first: "目前",
+    g: { name: "Gemini", lock: "Gemini", short: "G", color: C_GEMINI, rows: app.rows, first: "5 小時",
          note: loginNote(app, "Google") || sourceNote(app.at, app.error && app.error !== "nogemini", netErr),
          err: noData || (app.error === "nogemini" ? ERR_TEXT.nogemini : null) },
     a: { name: "Antigravity", lock: "Antigravity", short: "A", color: C_AGY, first: "5 小時",

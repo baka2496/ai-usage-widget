@@ -141,6 +141,11 @@ const cases = [
     }
     return true;
   }],
+  ["Gemini 的第一筆標成「5 小時」，不寫「目前」（2026-11-24 使用者要求）", async () => {
+    const r = await run({ family: "large", routes: { api: apiOk(sampleFeed()) } });
+    const i = r.texts.indexOf("Gemini");
+    return r.texts[i + 2] === "5 小時" && !r.texts.includes("目前");
+  }],
   ["標題只寫「Gemini」，不寫「Gemini App」（2026-11-24 使用者要求）", async () => {
     for (const f of ["small", "medium", "large", "accessoryRectangular", "accessoryInline"]) {
       const r = await run({ family: f, routes: { api: apiOk(sampleFeed()) } });
@@ -158,7 +163,7 @@ const cases = [
     const i = await run({ family: "accessoryInline", routes: { api: apiOk(sampleFeed()) } });
     const r = await run({ family: "accessoryRectangular", routes: { api: apiOk(sampleFeed()) } });
     return i.texts[0] === "C 30% · G 26% · A 0%"
-      && r.texts.includes("Claude  5h 30%  週 76%") && r.texts.includes("Gemini  目前 26%  週 16%") && r.texts.includes("Antigravity  5h 0%  週 2%");
+      && r.texts.includes("Claude  5h 30%  週 76%") && r.texts.includes("Gemini  5h 26%  週 16%") && r.texts.includes("Antigravity  5h 0%  週 2%");
   }],
   ["鎖定畫面圓形：gemini → Gemini、antigravity → Antigravity、預設 Claude", async () => {
     const t = async (param) => (await run({ family: "accessoryCircular", param, routes: { api: apiOk(sampleFeed()) } })).texts.join("|");

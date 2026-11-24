@@ -83,7 +83,7 @@ Google 沒有提供讀取 Gemini App 用量的官方介面。電腦用一個**�
 | 小 | Claude 和 Gemini | 第二家換人：`codex`、`antigravity`；或指定兩家：`gx` |
 | 中（推薦） | 2×2：左 Claude／Codex，右 Gemini／Antigravity（不含重置倒數） | — |
 | 大 | 四家全部；Claude 和 Gemini 含重置倒數 | `all`：Antigravity 也顯示 Claude/GPT 那組 |
-| 鎖定畫面・長方形 | `Claude 5h 30% 週 5%` / `Gemini 目前 26% 週 16%` / `Antigravity 5h 0% 週 0%`（最多 3 家；Claude 登入快到期時，第三行改成提醒） | 例如 `cgx` 把第三行換成 Codex |
+| 鎖定畫面・長方形 | `Claude 5h 30% 週 5%` / `Gemini 5h 26% 週 16%` / `Antigravity 5h 0% 週 0%`（最多 3 家；Claude 登入快到期時，第三行改成提醒） | 例如 `cgx` 把第三行換成 Codex |
 | 鎖定畫面・圓形 | 一家的額度圓環 | `claude`（預設）、`gemini`、`antigravity`、`codex` |
 | 鎖定畫面・單行 | `C 30% · G 26% · A 0%`（Codex 顯示為 `Cx`） | 例如 `cgax` 顯示四家 |
 
