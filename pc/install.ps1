@@ -19,10 +19,20 @@ $edge = @("${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe", "$en
 if (-not $node -or -not $edge) { Write-Warning '找不到 node 或 Edge，小工具不會顯示 Gemini App 用量' }
 $geminiProfile = Join-Path $dst 'gemini-profile'
 
+# Codex：用 npm 安裝的 codex 本體（codex.js），由 node 直接執行 `codex app-server`
+$codexJs = $null
+$codexCmd = Get-Command codex -ErrorAction SilentlyContinue | Select-Object -First 1
+if ($codexCmd) {
+    $p = Join-Path (Split-Path $codexCmd.Source) 'node_modules\@openai\codex\bin\codex.js'
+    if (Test-Path $p) { $codexJs = $p }
+}
+if (-not $codexJs -or -not $node) { Write-Warning '找不到 Codex（npm 版）或 node，小工具不會顯示 Codex 額度' }
+
 New-Item -ItemType Directory -Force $dst | Out-Null
 Copy-Item (Join-Path $src 'push-agy-usage.ps1'), (Join-Path $src 'run-hidden.vbs'),
           (Join-Path $src 'notify-renew.ps1'), (Join-Path $src 'renew.ps1'),
-          (Join-Path $src 'read-gemini-usage.js'), (Join-Path $src 'gemini-login.ps1') $dst -Force
+          (Join-Path $src 'read-gemini-usage.js'), (Join-Path $src 'gemini-login.ps1'),
+          (Join-Path $src 'read-codex-usage.js') $dst -Force
 
 $cfgPath = Join-Path $dst 'config.json'
 $cfg = $null
@@ -45,6 +55,7 @@ if (-not $cfg -or -not $cfg.gist_id) {
         node_path   = $node
         edge_path   = $edge
         gemini_profile = $geminiProfile
+        codex_js    = $codexJs
     }
 } else {
     $cfg = [pscustomobject]@{
@@ -56,6 +67,7 @@ if (-not $cfg -or -not $cfg.gist_id) {
         node_path   = $node
         edge_path   = $edge
         gemini_profile = $geminiProfile
+        codex_js    = $codexJs
     }
 }
 [IO.File]::WriteAllText($cfgPath, ($cfg | ConvertTo-Json), (New-Object Text.UTF8Encoding $false))

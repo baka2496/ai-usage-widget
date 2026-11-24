@@ -10,7 +10,7 @@ const GIST = "0123456789abcdef0123456789abcdef";
 const iso = (ms) => new Date(Date.now() + ms).toISOString().replace(/\.\d+Z$/, "Z");
 const H = 3600e3, D = 86400e3;
 
-function sampleFeed({ fetchedAgo = 0, expiresIn = 20 * D, gemini = true, geminiError = null } = {}) {
+function sampleFeed({ fetchedAgo = 0, expiresIn = 20 * D, gemini = true, geminiError = null, codex = true, codexRows } = {}) {
   const at = iso(-fetchedAgo);
   return {
     v: 2, fetched_at: at,
@@ -25,6 +25,9 @@ function sampleFeed({ fetchedAgo = 0, expiresIn = 20 * D, gemini = true, geminiE
       { kind: "weekly_all", model: null, used: 76, reset: iso(3 * D) } ] },
     ...(gemini ? { gemini_app: { fetched_at: at, error: geminiError,
       current: { used: 26, reset: iso(3 * H) }, weekly: { used: 16, reset: iso(2 * D) } } } : {}),
+    // 2026-11-24 實際讀到的 Codex 免費方案：只有一筆「每月」，PowerShell 存成單一物件（不是清單）
+    ...(codex ? { codex: { fetched_at: at, error: null, plan: "free",
+      rows: codexRows || { label: "每月", mins: 43200, used: 2, reset: iso(22 * D) } } } : {}),
   };
 }
 
@@ -86,7 +89,7 @@ function run({ feedUrl = GIST, routes = {}, cache = null, family = "medium", par
 const apiOk = (feed) => ({ code: 200, body: { owner: { login: "newname" }, files: { "agy-usage.json": { truncated: false, content: JSON.stringify(feed) } } } });
 
 const cases = [
-  ["正常讀取：顯示 Claude、Gemini App、Antigravity 的數字，右上角是「剛剛」", async () => {
+  ["正常讀取：顯示 Claude、Gemini App、Antigravity、Codex 的數字，右上角是「剛剛」", async () => {
     const r = await run({ routes: { api: apiOk(sampleFeed()) } });
     return r.texts.includes("30%") && r.texts.includes("76%") && r.texts.includes("剛剛") && !r.texts.some((t) => /離線|失敗/.test(t));
   }],
@@ -162,12 +165,42 @@ const cases = [
     const r = await run({ routes: { api: apiOk(sampleFeed({ gemini: false })) } });
     return r.texts.includes("電腦尚未上傳 Gemini 資料");
   }],
+  ["Codex：只有一筆額度、而且被存成單一物件，也讀得到（2026-11-24 的情況）", async () => {
+    const r = await run({ family: "medium", routes: { api: apiOk(sampleFeed()) } });
+    const i = r.texts.indexOf("Codex");
+    return i >= 0 && r.texts.slice(i).includes("每月") && r.texts.slice(i).includes("2%");
+  }],
+  ["中尺寸 2×2：Claude、Codex、Gemini App、Antigravity 都有", async () => {
+    const r = await run({ family: "medium", routes: { api: apiOk(sampleFeed()) } });
+    return ["Claude", "Codex", "Gemini App", "Antigravity"].every((n) => r.texts.includes(n));
+  }],
+  ["大尺寸：四家都有", async () => {
+    const r = await run({ family: "large", routes: { api: apiOk(sampleFeed()) } });
+    return ["Claude", "Codex", "Gemini App", "Antigravity"].every((n) => r.texts.includes(n));
+  }],
+  ["Codex 有 5 小時和每週兩筆（付費方案）時兩筆都顯示", async () => {
+    const rows = [{ label: "5 小時", used: 40, reset: iso(H) }, { label: "每週", used: 12, reset: iso(3 * D) }];
+    const r = await run({ family: "accessoryRectangular", param: "cx", routes: { api: apiOk(sampleFeed({ codexRows: rows })) } });
+    return r.texts.includes("Codex  5h 40%  週 12%");
+  }],
+  ["參數：小尺寸 codex、單行 cgax、圓形 codex", async () => {
+    const f = apiOk(sampleFeed());
+    const sm = await run({ family: "small", param: "codex", routes: { api: f } });
+    const il = await run({ family: "accessoryInline", param: "cgax", routes: { api: f } });
+    const ci = await run({ family: "accessoryCircular", param: "codex", routes: { api: f } });
+    return sm.texts.includes("Codex") && !sm.texts.includes("Gemini App")
+      && il.texts[0] === "C 30% · G 26% · A 0% · Cx 2%" && ci.texts.join("|") === "Cx 2";
+  }],
+  ["電腦還沒上傳 Codex 資料：顯示說明", async () => {
+    const r = await run({ routes: { api: apiOk(sampleFeed({ codex: false })) } });
+    return r.texts.includes("電腦尚未上傳 Codex 資料");
+  }],
   ["停用的額度（disabled）不顯示，不能變成 0%", async () => {
     const feed = sampleFeed();
     feed.agy.groups.push({ name: "Claude and GPT models", buckets: [
       { id: "3p-5h", window: "5h", remaining: 1, reset: "", disabled: true },
       { id: "3p-weekly", window: "weekly", remaining: 0.6, reset: iso(5 * D), disabled: false } ] });
-    const r = await run({ family: "large", routes: { api: apiOk(feed) } });
+    const r = await run({ family: "large", param: "all", routes: { api: apiOk(feed) } });
     return !r.texts.includes("Claude/GPT 5h") && r.texts.includes("Claude/GPT 週") && r.texts.includes("40%");
   }],
   ["所有尺寸都畫得出來（小/中/大/鎖定畫面三種）", async () => {

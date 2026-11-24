@@ -1,17 +1,19 @@
-# AI 額度小工具（Claude + Gemini App + Antigravity CLI）
+# AI 額度小工具（Claude + Gemini App + Antigravity CLI + Codex）
 
 iPhone 主畫面／鎖定畫面小工具，顯示：
 
 - **Claude**：5 小時、每週、各模型的每週額度（跟 Claude Code 的 `/usage` 一樣）
 - **Gemini App**：gemini.google.com/usage 上的「目前用量」和「每週上限」
 - **Antigravity CLI**：5 小時／每週、Argon 每週、Claude/GPT 那組（停用中的限制不顯示）
+- **Codex**：方案的額度視窗（免費版是「每月」；付費版通常是 5 小時＋每週），透過 Codex 官方的 `codex app-server` 讀取（`pc/read-codex-usage.js`），不呼叫模型、不花用量。需要 npm 安裝的 `codex` 並已登入（`codex login`）。
 
 > **Gemini App 和 Antigravity 的額度是分開算的**：重置時間和數字都不同，所以小工具分成兩欄。
 
 ```
 Windows 電腦（每 15 分鐘）                       GitHub               iPhone（Scriptable）
 claude -p /usage --output-format json ─┐
-agy    -p /usage --output-format json ─┼──►  私密 Gist  ◄── 讀取 ──  AI-Usage.js
+agy    -p /usage --output-format json ─┤
+codex app-server（account/rateLimits）─┼──►  私密 Gist  ◄── 讀取 ──  AI-Usage.js
 Edge（背景）讀 gemini.google.com/usage ─┘
 ```
 
@@ -76,12 +78,16 @@ Google 沒有提供讀取 Gemini App 用量的官方介面。電腦用一個**�
 
 | 位置 | 內容 | Parameter |
 |---|---|---|
-| 小 | Claude 和 Gemini App | `antigravity`：下半部改顯示 Antigravity |
-| 中（推薦） | 左邊 Claude（含重置倒數）、右邊上下是 Gemini App 和 Antigravity | — |
-| 大 | 三組全部項目，含重置倒數 | — |
-| 鎖定畫面・長方形 | `Claude 5h 30% 週 5%` / `Gemini 目前 26% 週 16%` / `Antigravity 5h 0% 週 0%`（Claude 登入快到期時，第三行改成提醒） | — |
-| 鎖定畫面・圓形 | 5 小時額度圓環 | `claude`（預設）、`gemini`（Gemini App）或 `antigravity` |
-| 鎖定畫面・單行 | `C 30% · G 26% · A 0%` | — |
+參數用字母或名稱指定要顯示哪幾家：`c`＝Claude、`g`＝Gemini App、`a`＝Antigravity、`x`＝Codex（例如 `cgx`，或 `codex`）。
+
+| 位置 | 內容 | Parameter |
+|---|---|---|
+| 小 | Claude 和 Gemini App | 第二家換人：`codex`、`antigravity`；或指定兩家：`gx` |
+| 中（推薦） | 2×2：左 Claude／Codex，右 Gemini App／Antigravity（不含重置倒數） | — |
+| 大 | 四家全部；Claude 和 Gemini App 含重置倒數 | `all`：Antigravity 也顯示 Claude/GPT 那組 |
+| 鎖定畫面・長方形 | `Claude 5h 30% 週 5%` / `Gemini 目前 26% 週 16%` / `Antigravity 5h 0% 週 0%`（最多 3 家；Claude 登入快到期時，第三行改成提醒） | 例如 `cgx` 把第三行換成 Codex |
+| 鎖定畫面・圓形 | 一家的額度圓環 | `claude`（預設）、`gemini`、`antigravity`、`codex` |
+| 鎖定畫面・單行 | `C 30% · G 26% · A 0%`（Codex 顯示為 `Cx`） | 例如 `cgax` 顯示四家 |
 
 數字都是**已使用 %**，70% 以上變黃、90% 以上變紅。
 
@@ -95,11 +101,13 @@ Google 沒有提供讀取 Gemini App 用量的官方介面。電腦用一個**�
 ```bash
 node tests/widget.test.js                                   # 小工具：讀取方式、錯誤顯示、各尺寸
 node tests/gemini-parse.test.js                             # Gemini 用量頁的解析（用真實頁面文字）
+node tests/codex-parse.test.js                              # Codex 額度的解析（用真實回應）
 node tests/phone-script.test.js                             # 要貼到手機的檔案：語法、編碼、是不是最新版
 powershell -ExecutionPolicy Bypass -File pc\test-notify.ps1  # 續期視窗的安全設定
 ```
 - **push.log 出現「claude 失敗」**：在終端機執行 `claude auth login` 重新登入。
 - **push.log 出現「agy 失敗」**：在終端機執行 `agy` 重新登入。
+- **push.log 出現「codex 失敗」**：在終端機執行 `codex login` 重新登入。
 - **push.log 出現「Google 登入過期」**：執行 `gemini-login.ps1`。
 - **push.log 出現「專用 Edge 沒有啟動」**：登入用的那個 Edge 視窗還開著，關掉就好。
 - **iOS 小工具更新頻率**由系統決定（通常 15～30 分鐘一次）。

@@ -124,6 +124,33 @@ function Get-GeminiAppUsage($cfg) {
     return [ordered]@{ current = (& $pick $j.current); weekly = (& $pick $j.weekly) }
 }
 
+# ---------- Codex ----------
+# 透過 Codex 官方的 `codex app-server` 讀帳號額度（不呼叫模型、不花用量）
+function Get-CodexUsage($cfg) {
+    $script = Join-Path $here 'read-codex-usage.js'
+    $job = Start-Job -ScriptBlock {
+        param($node, $script, $codexJs)
+        [Console]::OutputEncoding = [Text.Encoding]::UTF8
+        & $node $script $codexJs 2>$null | Out-String
+    } -ArgumentList $cfg.node_path, $script, $cfg.codex_js
+    if (-not (Wait-Job $job -Timeout 90)) {
+        Stop-Job $job; Remove-Job $job -Force
+        throw 'Codex 超過 90 秒沒有回應'
+    }
+    $raw = Receive-Job $job
+    Remove-Job $job -Force
+    try { $j = $raw | ConvertFrom-Json } catch { throw ('讀 Codex 額度的輸出不是 JSON：' + $raw.Substring(0, [Math]::Min(200, $raw.Length))) }
+    if (-not $j.ok) {
+        if ($j.error -eq 'login') { throw 'Codex 登入過期（在終端機執行 codex login）' }
+        throw [string]$j.error
+    }
+    $rows = @()
+    foreach ($r in $j.rows) {
+        $rows += [ordered]@{ label = [string]$r.label; mins = $r.mins; used = [double]$r.used; reset = $(if ($r.reset) { [string]$r.reset } else { $null }) }
+    }
+    return [ordered]@{ plan = $j.plan; rows = $rows }
+}
+
 # ---------- 主程式 ----------
 try {
     $cfg = Get-Content (Join-Path $here 'config.json') -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -144,7 +171,12 @@ try {
         try { $gem = Get-GeminiAppUsage $cfg } catch { $gemErr = $_.Exception.Message }
     } else { $gemErr = '沒有設定 Gemini App（執行 gemini-login.ps1）' }
 
-    if (-not $agy -and -not $claude -and -not $gem) { throw "全部失敗 — agy: $agyErr / claude: $claudeErr / gemini: $gemErr" }
+    $codex = $null; $codexErr = $null
+    if ($cfg.node_path -and $cfg.codex_js -and (Test-Path $cfg.codex_js)) {
+        try { $codex = Get-CodexUsage $cfg } catch { $codexErr = $_.Exception.Message }
+    } else { $codexErr = '沒有設定 Codex（重跑 install.ps1）' }
+
+    if (-not $agy -and -not $claude -and -not $gem -and -not $codex) { throw "全部失敗 — agy: $agyErr / claude: $claudeErr / gemini: $gemErr / codex: $codexErr" }
 
     # 某一邊失敗時，沿用上一次成功的資料，並標記錯誤
     $outFile = Join-Path $here 'agy-usage.json'
@@ -154,25 +186,32 @@ try {
     $prevExpires = if ($prev -and $prev.claude) { [string]$prev.claude.login_expires_at } else { '' }
     $expires = if ($script:claudeExpires) { $script:claudeExpires } elseif ($prevExpires) { $prevExpires } else { $null }
 
+    # 清單一律用 @(...)：只有一筆時 PowerShell 會把它拆成單一物件，手機就讀不到（2026-11-24 Codex 只有「每月」一筆）
     $payload = [ordered]@{
         v          = 2
         fetched_at = $now
         agy        = [ordered]@{
             fetched_at = $(if ($agy) { $now } elseif ($prev -and $prev.agy) { $prev.agy.fetched_at } else { $null })
             error      = $agyErr
-            groups     = $(if ($agy) { $agy } elseif ($prev -and $prev.agy) { $prev.agy.groups } else { @() })
+            groups     = @(if ($agy) { $agy } elseif ($prev -and $prev.agy) { $prev.agy.groups } else { @() })
         }
         claude     = [ordered]@{
             fetched_at = $(if ($claude) { $now } elseif ($prev -and $prev.claude) { $prev.claude.fetched_at } else { $null })
             error      = $claudeErr
             login_expires_at = $expires
-            rows       =$(if ($claude) { $claude } elseif ($prev -and $prev.claude) { $prev.claude.rows } else { @() })
+            rows       = @(if ($claude) { $claude } elseif ($prev -and $prev.claude) { $prev.claude.rows } else { @() })
         }
         gemini_app = [ordered]@{
             fetched_at = $(if ($gem) { $now } elseif ($prev -and $prev.gemini_app) { $prev.gemini_app.fetched_at } else { $null })
             error      = $(if ($gemErr -and $gemErr -like 'Google 登入過期*') { 'login' } else { $gemErr })
             current    = $(if ($gem) { $gem.current } elseif ($prev -and $prev.gemini_app) { $prev.gemini_app.current } else { $null })
             weekly     = $(if ($gem) { $gem.weekly } elseif ($prev -and $prev.gemini_app) { $prev.gemini_app.weekly } else { $null })
+        }
+        codex      = [ordered]@{
+            fetched_at = $(if ($codex) { $now } elseif ($prev -and $prev.codex) { $prev.codex.fetched_at } else { $null })
+            error      = $(if ($codexErr -and $codexErr -like 'Codex 登入過期*') { 'login' } else { $codexErr })
+            plan       = $(if ($codex) { $codex.plan } elseif ($prev -and $prev.codex) { $prev.codex.plan } else { $null })
+            rows       = @(if ($codex) { $codex.rows } elseif ($prev -and $prev.codex) { $prev.codex.rows } else { @() })
         }
     }
     $json = $payload | ConvertTo-Json -Depth 8 -Compress
@@ -195,6 +234,8 @@ try {
     if ($claudeErr) { $status += " (claude 失敗: $claudeErr)" }
     if ($gem) { $status += " gemini $($gem.current.used)%/$($gem.weekly.used)%" }
     if ($gemErr) { $status += " (gemini 失敗: $gemErr)" }
+    if ($codex) { $status += ' codex ' + (($codex.rows | ForEach-Object { "$($_.label) $($_.used)%" }) -join '/') }
+    if ($codexErr) { $status += " (codex 失敗: $codexErr)" }
     Write-Log $status
 
     # Claude 登入剩 3 天內（或已過期）：另開一個程序跳出續期視窗，不卡住這次排程

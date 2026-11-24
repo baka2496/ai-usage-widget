@@ -3,14 +3,16 @@
 // icon-color: deep-gray; icon-glyph: tachometer-alt;
 
 // ============================================================
-//  AI 額度小工具：Claude + Gemini App + Antigravity CLI
+//  AI 額度小工具：Claude + Gemini App + Antigravity CLI + Codex
 //  注意：Gemini App（gemini.google.com）和 Antigravity CLI 的額度是分開計算的。
 //  電腦每 15 分鐘把 `claude /usage`、`agy /usage` 和 Gemini 用量頁上傳到私密 Gist，
 //  這裡只讀 Gist，手機不需要登入任何帳號。
 //
-//  小工具參數（長按小工具 → 編輯小工具 → Parameter）：
-//    鎖定畫面圓形：claude（預設）、gemini（Gemini App）或 antigravity
-//    小尺寸：antigravity → 下半部改顯示 Antigravity（預設 Gemini App）
+//  小工具參數（長按小工具 → 編輯小工具 → Parameter）：c=Claude g=Gemini App a=Antigravity x=Codex
+//    小尺寸：第二家要換成誰，例如 codex 或 x（預設 Gemini App）；也可以指定兩家，例如 gx
+//    鎖定畫面長方形／單行：要顯示哪幾家、照順序，例如 cgx（預設 cga，長方形最多 3 家）
+//    鎖定畫面圓形：顯示哪一家，例如 codex（預設 claude）
+//    大尺寸：all → Antigravity 也顯示「Claude 和 GPT」那組
 // ============================================================
 
 // ★ 把電腦 install.ps1 最後印出來的 Gist 代號（或完整網址）貼在這裡
@@ -23,6 +25,7 @@ const EXPIRY_WARN_DAYS = 3; // Claude 登入剩幾天內開始提醒
 const C_CLAUDE = new Color("#D97757");
 const C_GEMINI = new Color("#4C8DF6"); // Gemini App
 const C_AGY = new Color("#2FB39A");    // Antigravity
+const C_CODEX = new Color("#A78BFA");  // Codex
 const C_WARN = new Color("#F5A623");
 const C_DANGER = new Color("#E5484D");
 const C_TRACK = Color.dynamic(new Color("#000000", 0.10), new Color("#FFFFFF", 0.16));
@@ -103,8 +106,8 @@ async function getFeed() {
 
 function parseClaude(feed) {
   const c = feed && feed.claude;
-  if (!c || !Array.isArray(c.rows)) return { rows: [], at: null, error: "noclaude" };
-  const rows = c.rows.map((r) => {
+  if (!c || !c.rows) return { rows: [], at: null, error: "noclaude" };
+  const rows = toArr(c.rows).map((r) => {
     if (r.kind === "session") return { label: "5 小時", used: clamp(r.used), reset: r.reset, order: 0 };
     if (r.kind === "weekly_all") return { label: "每週", used: clamp(r.used), reset: r.reset, order: 1 };
     return { label: `${r.model || "模型"} 週`, used: clamp(r.used), reset: r.reset, order: 2 };
@@ -127,6 +130,29 @@ function parseGeminiApp(feed) {
   if (g.weekly) rows.push({ label: "每週", used: clamp(g.weekly.used), reset: g.weekly.reset || null });
   return { rows, at: g.fetched_at ? Date.parse(g.fetched_at) : null, error: g.error || null };
 }
+
+// Codex（codex app-server 的 account/rateLimits/read）：視窗長度依方案不同（免費版是每月）
+function parseCodex(feed) {
+  const c = feed && feed.codex;
+  if (!c) return { rows: [], at: null, error: "nocodex" };
+  const rows = toArr(c.rows).map((r) => ({ label: r.label || "額度", used: clamp(r.used), reset: r.reset || null }));
+  return { rows, at: c.fetched_at ? Date.parse(c.fetched_at) : null, error: c.error || null, plan: c.plan || null };
+}
+
+// 參數 → 要顯示哪幾家：c=Claude、g=Gemini App、a=Antigravity、x=Codex
+//   可以寫字母（"cgx"）或名稱（"codex"、"claude,codex"）
+function paramLetters(param) {
+  const p = String(param || "").toLowerCase().replace(/\ball\b/g, "").trim();
+  if (!p) return [];
+  const NAMES = { claude: "c", gemini: "g", antigravity: "a", agy: "a", codex: "x" };
+  const words = p.split(/[\s,，、]+/).filter(Boolean);
+  if (words.every((w) => NAMES[w])) return [...new Set(words.map((w) => NAMES[w]))];
+  if (/^[cgax]{1,4}$/.test(p)) return [...new Set(p.split(""))];
+  return [];
+}
+
+const SHORT = { "5 小時": "5h", "每週": "週", "目前": "目前", "每月": "月" };
+function shortLabel(l) { return SHORT[l] || l; }
 
 const AGY_GROUP_LABEL = {
   "Gemini Models": "Gemini",
@@ -168,6 +194,9 @@ function parseAgy(groups, showAll) {
 // ------------------------------------------------------------
 //  工具函式
 // ------------------------------------------------------------
+// PowerShell 只有一筆資料時會存成單一物件而不是清單，兩種都要能讀
+function toArr(x) { return Array.isArray(x) ? x : x ? [x] : []; }
+
 function clamp(n) { return Math.max(0, Math.min(100, Math.round(n))); }
 
 function colorFor(used, base) {
@@ -253,6 +282,7 @@ const ERR_TEXT = {
   nofile: "Gist 裡沒有額度資料",
   noclaude: "電腦尚未上傳 Claude 資料",
   nogemini: "電腦尚未上傳 Gemini 資料",
+  nocodex: "電腦尚未上傳 Codex 資料",
 };
 
 // ------------------------------------------------------------
@@ -339,34 +369,50 @@ function pick(rows, labels) {
 }
 
 async function buildWidget(family, param) {
-  const showAll = /all/i.test(param);
+  const showAll = /\ball\b/i.test(param);
   const { feed, error: netErr } = await getFeed();
   const claude = parseClaude(feed);
   const agy = agySource(feed);
-  const cRows = claude.rows;
-  const gRows = parseAgy(agy.groups, showAll);
   const app = parseGeminiApp(feed);
-  const aRows = app.rows;
+  const codex = parseCodex(feed);
   const noData = ERR_TEXT[netErr] || (netErr ? "讀取失敗" : null);
-  const cErr = noData || ERR_TEXT[claude.error] || null;
-  const gErr = noData;
-  const aErr = noData || (app.error === "nogemini" ? ERR_TEXT.nogemini : null);
+  const exp = expiryText(claude.expires);
+  const loginNote = (src, who) => (src.error === "login" && !netErr ? { text: who + " 需重新登入", color: C_DANGER } : null);
+
+  // 四家的資料整理成同一種格式
+  const P = {
+    c: { name: "Claude", lock: "Claude", short: "C", color: C_CLAUDE, rows: claude.rows, first: "5 小時",
+         note: exp ? { text: exp, color: C_DANGER } : sourceNote(claude.at, claude.error === "pc", netErr),
+         err: noData || ERR_TEXT[claude.error] || null },
+    g: { name: "Gemini App", lock: "Gemini", short: "G", color: C_GEMINI, rows: app.rows, first: "目前",
+         note: loginNote(app, "Google") || sourceNote(app.at, app.error && app.error !== "nogemini", netErr),
+         err: noData || (app.error === "nogemini" ? ERR_TEXT.nogemini : null) },
+    a: { name: "Antigravity", lock: "Antigravity", short: "A", color: C_AGY, first: "5 小時",
+         rows: pick(parseAgy(agy.groups, false), ["5 小時", "每週"]), allRows: parseAgy(agy.groups, true),
+         note: sourceNote(agy.at, agy.error, netErr), err: noData },
+    x: { name: "Codex", lock: "Codex", short: "Cx", color: C_CODEX, rows: codex.rows, first: null,
+         note: loginNote(codex, "Codex") || sourceNote(codex.at, codex.error && codex.error !== "nocodex", netErr),
+         err: noData || (codex.error === "nocodex" ? ERR_TEXT.nocodex : null) },
+  };
+  const firstRow = (k) => (P[k].first ? pick(P[k].rows, [P[k].first])[0] : null) || P[k].rows[0];
+  const pct = (r) => (r ? r.used + "%" : "—");
+  const letters = paramLetters(param);
+  const section = (stack, k, rows, width, compact) =>
+    addSection(stack, P[k].name, P[k].color, rows, P[k].note.text, P[k].note.color, width, compact, P[k].err);
+  const two = (k) => P[k].rows.slice(0, 2);
 
   const w = new ListWidget();
   w.refreshAfterDate = new Date(Date.now() + 15 * 60e3);
 
   // ---------- 鎖定畫面 ----------
   if (family === "accessoryInline") {
-    const c = pick(cRows, ["5 小時"])[0], a = pick(aRows, ["目前"])[0], g = pick(gRows, ["5 小時"])[0];
-    const v = (r) => (r ? r.used + "%" : "—");
-    w.addText(`C ${v(c)} · G ${v(a)} · A ${v(g)}`);
+    const ks = letters.length ? letters : ["c", "g", "a"];
+    w.addText(ks.map((k) => `${P[k].short} ${pct(firstRow(k))}`).join(" · "));
     return w;
   }
   if (family === "accessoryCircular") {
-    // gemini / g → Gemini App；antigravity / agy / a → Antigravity；其他 → Claude
-    const p = param.trim();
-    const which = /^(antigravity|agy|a)$/i.test(p) ? "A" : /^(gemini|g)$/i.test(p) ? "G" : "C";
-    const r = which === "A" ? pick(gRows, ["5 小時"])[0] : which === "G" ? pick(aRows, ["目前"])[0] : pick(cRows, ["5 小時"])[0];
+    const k = letters[0] || "c";
+    const r = firstRow(k);
     w.addAccessoryWidgetBackground = true;
     const s = w.addStack();
     s.layoutVertically();
@@ -374,81 +420,71 @@ async function buildWidget(family, param) {
     const img = s.addImage(ringImage(56, r ? r.used : 0, Color.white()));
     img.imageSize = new Size(44, 44);
     img.centerAlignImage();
-    const t = s.addText(`${which} ${r ? r.used : "—"}`);
+    const t = s.addText(`${P[k].short} ${r ? r.used : "—"}`);
     t.font = Font.boldSystemFont(11);
     t.centerAlignText();
     return w;
   }
   if (family === "accessoryRectangular") {
-    const line = (name, rows, firstLabel, firstShort) => {
-      const a = pick(rows, [firstLabel])[0], b = pick(rows, ["每週"])[0];
-      const t = w.addText(`${name}  ${firstShort} ${a ? a.used + "%" : "—"}  週 ${b ? b.used + "%" : "—"}`);
+    const ks = (letters.length ? letters : ["c", "g", "a"]).slice(0, exp ? 2 : 3); // 登入快到期的提醒比第三家重要
+    for (const k of ks) {
+      const parts = two(k).map((r) => `${shortLabel(r.label)} ${pct(r)}`);
+      const t = w.addText(`${P[k].lock}  ${parts.length ? parts.join("  ") : "—"}`);
       t.font = Font.semiboldSystemFont(13);
       t.lineLimit = 1;
       t.minimumScaleFactor = 0.7;
-    };
-    line("Claude", cRows, "5 小時", "5h");
-    line("Gemini", aRows, "目前", "目前");
-    const exp = expiryText(claude.expires);
+    }
     if (exp) {
-      // 登入快到期比 Antigravity 重要，放第三行
       const t = w.addText("⚠︎ Claude " + exp);
       t.font = Font.semiboldSystemFont(11);
-    } else {
-      line("Antigravity", gRows, "5 小時", "5h");
     }
     return w;
   }
 
   // ---------- 主畫面 ----------
   w.backgroundColor = C_BG;
-  const exp = expiryText(claude.expires);
-  const cn = exp ? { text: exp, color: C_DANGER } : sourceNote(claude.at, claude.error === "pc", netErr);
-  const gn = sourceNote(agy.at, agy.error, netErr);
-  const an = app.error === "login" && !netErr ? { text: "Google 需重新登入", color: C_DANGER }
-    : sourceNote(app.at, app.error && app.error !== "nogemini", netErr);
 
   if (family === "small") {
+    // 預設 Claude + Gemini App；參數可換第二家（例如 codex），或指定兩家（例如 gx）
+    const ks = letters.length >= 2 ? letters.slice(0, 2)
+      : letters.length === 1 && letters[0] !== "c" ? ["c", letters[0]] : ["c", "g"];
     w.setPadding(10, 12, 10, 12);
-    const width = 128;
-    addSection(w, "Claude", C_CLAUDE, pick(cRows, ["5 小時", "每週"]), cn.text, cn.color, width, true, cErr);
+    section(w, ks[0], two(ks[0]), 128, true);
     w.addSpacer();
-    if (/^(antigravity|agy|a)$/i.test(param.trim())) {
-      addSection(w, "Antigravity", C_AGY, pick(gRows, ["5 小時", "每週"]), gn.text, gn.color, width, true, gErr);
-    } else {
-      addSection(w, "Gemini App", C_GEMINI, aRows, an.text, an.color, width, true, aErr);
-    }
+    section(w, ks[1], two(ks[1]), 128, true);
     return w;
   }
 
   if (family === "large") {
-    w.setPadding(16, 16, 16, 16);
+    w.setPadding(14, 16, 14, 16);
     const width = 290;
-    addSection(w, "Claude", C_CLAUDE, cRows, cn.text, cn.color, width, false, cErr);
-    w.addSpacer(12);
-    addSection(w, "Gemini App", C_GEMINI, aRows, an.text, an.color, width, false, aErr);
-    w.addSpacer(12);
-    const all = parseAgy(agy.groups, true);
-    addSection(w, "Antigravity", C_AGY, all, gn.text, gn.color, width, all.length > 3, gErr);
+    section(w, "c", P.c.rows, width, false);
+    w.addSpacer(10);
+    section(w, "g", P.g.rows, width, false);
+    w.addSpacer(10);
+    section(w, "a", showAll ? P.a.allRows : P.a.allRows.filter((r) => !/^Claude\/GPT/.test(r.label)), width, true);
+    w.addSpacer(10);
+    section(w, "x", P.x.rows, width, true);
     w.addSpacer();
     return w;
   }
 
-  // medium（預設）：右欄放兩組，上下留白比左右少一點
+  // medium（預設）：2×2，左 Claude / Codex，右 Gemini App / Antigravity（精簡版，不含重置倒數）
   w.setPadding(10, 14, 10, 14);
   const row = w.addStack();
   row.topAlignContent();
   const width = 138;
   const left = row.addStack();
   left.layoutVertically();
-  addSection(left, "Claude", C_CLAUDE, cRows.slice(0, 3), cn.text, cn.color, width, false, cErr);
+  section(left, "c", pick(P.c.rows, ["5 小時", "每週"]), width, true);
+  left.addSpacer(4);
+  section(left, "x", two("x"), width, true);
   row.addSpacer(16);
   const right = row.addStack();
   right.layoutVertically();
-  // 右欄上下兩組：Gemini App、Antigravity（精簡版，不含重置倒數）
-  addSection(right, "Gemini App", C_GEMINI, aRows, an.text, an.color, width, true, aErr);
+  section(right, "g", two("g"), width, true);
   right.addSpacer(4);
-  addSection(right, "Antigravity", C_AGY, pick(gRows, ["5 小時", "每週"]), gn.text, gn.color, width, true, gErr);
+  section(right, "a", P.a.rows, width, true);
   w.addSpacer();
   return w;
 }
