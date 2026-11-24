@@ -317,10 +317,12 @@ function addRow(stack, row, base, width, compact) {
   l.textColor = C_SUB;
   l.lineLimit = 1;
   top.addSpacer();
-  if (!compact && row.reset) {
-    const r = top.addText(untilText(row.reset) + "  ");
-    r.font = Font.systemFont(9);
+  // 重設倒數：所有尺寸都顯示（2026-11-24 使用者要求；精簡版字小一點）
+  if (row.reset) {
+    const r = top.addText(untilText(row.reset) + (compact ? " " : "  "));
+    r.font = Font.systemFont(compact ? 8.5 : 9);
     r.textColor = C_SUB;
+    r.lineLimit = 1;
   }
   const p = top.addText(row.used + "%");
   p.font = Font.boldMonospacedSystemFont(compact ? 11 : 12);
@@ -470,7 +472,7 @@ async function buildWidget(family, param) {
     return w;
   }
 
-  // medium（預設）：2×2，左 Claude / Codex，右 Gemini App / Antigravity（精簡版，不含重置倒數）
+  // medium（預設）：2×2，左 Claude / Codex，右 Gemini / Antigravity（精簡版，字小一點，含重設倒數）
   w.setPadding(10, 14, 10, 14);
   const row = w.addStack();
   row.topAlignContent();

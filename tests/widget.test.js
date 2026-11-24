@@ -146,6 +146,18 @@ const cases = [
     const i = r.texts.indexOf("Gemini");
     return r.texts[i + 2] === "5 小時" && !r.texts.includes("目前");
   }],
+  ["中、小、大尺寸每一列都有重設倒數（2026-11-24 使用者要求）", async () => {
+    // sampleFeed 的重設時間：Claude 1 小時／3 天、Gemini 3 小時／2 天、Antigravity 2 小時／6 天、Codex 22 天
+    const want = { medium: ["59分", "2天23時", "21天23時", "2時59分", "1天23時", "1時59分", "5天23時"],
+                   small: ["59分", "2天23時", "2時59分", "1天23時"] };
+    for (const [f, list] of Object.entries(want)) {
+      const r = await run({ family: f, routes: { api: apiOk(sampleFeed()) } });
+      const texts = r.texts.map((t) => t.trim());
+      if (!list.every((x) => texts.includes(x))) return false;
+    }
+    const lg = await run({ family: "large", routes: { api: apiOk(sampleFeed()) } });
+    return lg.texts.map((t) => t.trim()).includes("21天23時"); // 大尺寸的 Codex 也有
+  }],
   ["標題只寫「Gemini」，不寫「Gemini App」（2026-11-24 使用者要求）", async () => {
     for (const f of ["small", "medium", "large", "accessoryRectangular", "accessoryInline"]) {
       const r = await run({ family: f, routes: { api: apiOk(sampleFeed()) } });
