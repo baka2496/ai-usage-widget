@@ -486,20 +486,22 @@ async function buildWidget(family, param) {
   }
 
   // medium（預設）：2×2，左 Claude / Codex，右 Gemini / Antigravity（精簡版，字小一點，含重設倒數）
-  w.setPadding(10, 14, 10, 14);
+  // 間距依 2026-11-24 實機截圖調整：原本上下兩組只隔 4 點，底下空了 24.5 點
+  const GROUP_GAP = 14;
+  w.setPadding(14, 14, 10, 14);
   const row = w.addStack();
   row.topAlignContent();
   const width = 138;
   const left = row.addStack();
   left.layoutVertically();
   section(left, "c", pick(P.c.rows, ["5 小時", "每週"]), width, true);
-  left.addSpacer(4);
+  left.addSpacer(GROUP_GAP);
   section(left, "x", two("x"), width, true);
   row.addSpacer(16);
   const right = row.addStack();
   right.layoutVertically();
   section(right, "g", two("g"), width, true);
-  right.addSpacer(4);
+  right.addSpacer(GROUP_GAP);
   section(right, "a", P.a.rows, width, true);
   w.addSpacer();
   return w;

@@ -162,6 +162,10 @@ const cases = [
     const r = await run({ family: "accessoryRectangular", routes: { api: apiOk(sampleFeed()) } });
     return r.texts.length === 3 && r.texts.every((t) => !/ 5h | 週 /.test(t) && /\d+(分|時|天)/.test(t));
   }],
+  ["中尺寸上下兩組之間至少留 10 點（2026-11-24 實機截圖：只隔 4 點太擠、底下還空 24.5 點）", async () => {
+    const m = SRC.match(/const GROUP_GAP = (\d+);/);
+    return !!m && Number(m[1]) >= 10 && (SRC.match(/addSpacer\(GROUP_GAP\)/g) || []).length === 2;
+  }],
   ["標題只寫「Gemini」，不寫「Gemini App」（2026-11-24 使用者要求）", async () => {
     for (const f of ["small", "medium", "large", "accessoryRectangular", "accessoryInline"]) {
       const r = await run({ family: f, routes: { api: apiOk(sampleFeed()) } });
