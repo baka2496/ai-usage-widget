@@ -384,7 +384,7 @@ async function buildWidget(family, param) {
     c: { name: "Claude", lock: "Claude", short: "C", color: C_CLAUDE, rows: claude.rows, first: "5 小時",
          note: exp ? { text: exp, color: C_DANGER } : sourceNote(claude.at, claude.error === "pc", netErr),
          err: noData || ERR_TEXT[claude.error] || null },
-    g: { name: "Gemini App", lock: "Gemini", short: "G", color: C_GEMINI, rows: app.rows, first: "目前",
+    g: { name: "Gemini", lock: "Gemini", short: "G", color: C_GEMINI, rows: app.rows, first: "目前",
          note: loginNote(app, "Google") || sourceNote(app.at, app.error && app.error !== "nogemini", netErr),
          err: noData || (app.error === "nogemini" ? ERR_TEXT.nogemini : null) },
     a: { name: "Antigravity", lock: "Antigravity", short: "A", color: C_AGY, first: "5 小時",
