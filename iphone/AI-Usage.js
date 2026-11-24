@@ -218,6 +218,17 @@ function untilText(iso) {
   return `${mm}分`;
 }
 
+// 鎖定畫面用的短倒數：不到 1 小時寫分鐘，不到 1 天寫小時（無條件捨去），其餘寫天
+function lockUntil(iso) {
+  const ms = Date.parse(iso) - Date.now();
+  if (!Number.isFinite(ms)) return "";
+  if (ms <= 0) return "已重置";
+  const m = Math.floor(ms / 60e3);
+  if (m < 60) return `${m}分`;
+  if (m < 1440) return `${Math.floor(m / 60)}時`;
+  return `${Math.floor(m / 1440)}天`;
+}
+
 function agoText(ts) {
   if (!ts) return "";
   const m = Math.floor((Date.now() - ts) / 60e3);
@@ -431,8 +442,10 @@ async function buildWidget(family, param) {
   if (family === "accessoryRectangular") {
     const ks = (letters.length ? letters : ["c", "g", "a"]).slice(0, exp ? 2 : 3); // 登入快到期的提醒比第三家重要
     for (const k of ks) {
-      const parts = two(k).map((r) => `${shortLabel(r.label)} ${pct(r)}`);
-      const t = w.addText(`${P[k].lock}  ${parts.length ? parts.join("  ") : "—"}`);
+      // 不寫「5h／週」，改放重設倒數（短的是 5 小時、長的是每週／每月）（2026-11-24 使用者要求）
+      // 倒數只寫到小時或天：完整寫法（4時59分）最長要縮到 60%，超過 iPhone 的 70% 下限會被切掉
+      const parts = two(k).map((r) => `${pct(r)} ${r.reset ? lockUntil(r.reset) : ""}`.trim());
+      const t = w.addText(`${P[k].lock} ${parts.length ? parts.join(" ") : "—"}`);
       t.font = Font.semiboldSystemFont(13);
       t.lineLimit = 1;
       t.minimumScaleFactor = 0.7;

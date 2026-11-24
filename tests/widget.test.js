@@ -158,6 +158,10 @@ const cases = [
     const lg = await run({ family: "large", routes: { api: apiOk(sampleFeed()) } });
     return lg.texts.map((t) => t.trim()).includes("21天23時"); // 大尺寸的 Codex 也有
   }],
+  ["鎖定畫面長方形：不寫 5h／週，改顯示重設倒數（2026-11-24 使用者要求）", async () => {
+    const r = await run({ family: "accessoryRectangular", routes: { api: apiOk(sampleFeed()) } });
+    return r.texts.length === 3 && r.texts.every((t) => !/ 5h | 週 /.test(t) && /\d+(分|時|天)/.test(t));
+  }],
   ["標題只寫「Gemini」，不寫「Gemini App」（2026-11-24 使用者要求）", async () => {
     for (const f of ["small", "medium", "large", "accessoryRectangular", "accessoryInline"]) {
       const r = await run({ family: f, routes: { api: apiOk(sampleFeed()) } });
@@ -175,7 +179,7 @@ const cases = [
     const i = await run({ family: "accessoryInline", routes: { api: apiOk(sampleFeed()) } });
     const r = await run({ family: "accessoryRectangular", routes: { api: apiOk(sampleFeed()) } });
     return i.texts[0] === "C 30% · G 26% · A 0%"
-      && r.texts.includes("Claude  5h 30%  週 76%") && r.texts.includes("Gemini  5h 26%  週 16%") && r.texts.includes("Antigravity  5h 0%  週 2%");
+      && r.texts.includes("Claude 30% 59分 76% 2天") && r.texts.includes("Gemini 26% 2時 16% 1天") && r.texts.includes("Antigravity 0% 1時 2% 5天");
   }],
   ["鎖定畫面圓形：gemini → Gemini、antigravity → Antigravity、預設 Claude", async () => {
     const t = async (param) => (await run({ family: "accessoryCircular", param, routes: { api: apiOk(sampleFeed()) } })).texts.join("|");
@@ -205,7 +209,7 @@ const cases = [
   ["Codex 有 5 小時和每週兩筆（付費方案）時兩筆都顯示", async () => {
     const rows = [{ label: "5 小時", used: 40, reset: iso(H) }, { label: "每週", used: 12, reset: iso(3 * D) }];
     const r = await run({ family: "accessoryRectangular", param: "cx", routes: { api: apiOk(sampleFeed({ codexRows: rows })) } });
-    return r.texts.includes("Codex  5h 40%  週 12%");
+    return r.texts.includes("Codex 40% 59分 12% 2天");
   }],
   ["參數：小尺寸 codex、單行 cgax、圓形 codex", async () => {
     const f = apiOk(sampleFeed());
